@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import warnings
 import os
+from streamlit_autorefresh import st_autorefresh
 
 warnings.filterwarnings("ignore")
 
@@ -12,7 +13,15 @@ st.set_page_config(page_title="THANGALS Dashboard", page_icon="💎", layout="wi
 st.title("💎 THANGALS Business Dashboard")
 st.markdown('<style>div.block-container{padding-top:2rem;}</style>', unsafe_allow_html=True)
 
-# ---- LOAD CSV ----
+# ---- AUTO REFRESH EVERY 60 SECONDS ----
+st_autorefresh(interval=60000, key="data_refresh")
+
+# ---- LOAD CSV FUNCTION ----
+@st.cache_data(ttl=60)  # refresh cache every 60 seconds
+def load_data(file_path):
+    return pd.read_csv(file_path, encoding="ISO-8859-1")
+
+# ---- FILE PATH ----
 script_dir = os.path.dirname(os.path.abspath(__file__))
 file_path = os.path.join(script_dir, "sales.csv")
 
@@ -21,10 +30,15 @@ if not os.path.exists(file_path):
     st.stop()
 
 try:
-    df = pd.read_csv("https://raw.githubusercontent.com/your-username/your-repo/main/sale.csv")
+    df = load_data(file_path)
 except Exception as e:
     st.error(f"❌ Error reading CSV file: {e}")
     st.stop()
+
+# ---- REFRESH BUTTON ----
+if st.button("🔄 Refresh Data Now"):
+    st.cache_data.clear()
+    st.experimental_rerun()
 
 # ---- REQUIRED COLUMNS ----
 required_cols = ["Date","Location","Shop","Staff","Category","Sales","Weight","Cost","Profit"]
@@ -39,17 +53,6 @@ df.dropna(subset=["Date"], inplace=True)
 df["month_year"] = df["Date"].dt.to_period("M").dt.to_timestamp()
 
 # ---- SIDEBAR FILTERS ----
-st.sidebar.markdown("""
-<style>
-.sidebar .sidebar-content {
-    background: linear-gradient(135deg, #f6d365 0%, #fda085 100%);
-    color: white;
-    padding: 20px;
-    border-radius: 10px;
-}
-</style>
-""", unsafe_allow_html=True)
-
 st.sidebar.header("Filter Data")
 locations = st.sidebar.multiselect("📍 Location", options=df["Location"].dropna().unique())
 shops = st.sidebar.multiselect("🏬 Shop", options=df["Shop"].dropna().unique())
@@ -90,27 +93,15 @@ total_weight = filtered_df["Weight"].sum()
 total_cost = filtered_df["Cost"].sum()
 total_profit = filtered_df["Profit"].sum()
 
-kpi_html = f"""
-<div style='display:flex; justify-content:space-between; margin-bottom:20px; gap:20px;'>
-    <div style='background:linear-gradient(135deg, #f6d365 0%, #fda085 100%); padding:20px; border-radius:15px; flex:1; text-align:center;'>
-        <h3 style='color:white;'>💰 Total Sales</h3>
-        <h2 style='color:white; font-size:28px;'>${total_sales:,.2f}</h2>
-    </div>
-    <div style='background:linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%); padding:20px; border-radius:15px; flex:1; text-align:center;'>
-        <h3 style='color:white;'>⚖️ Total Weight</h3>
-        <h2 style='color:white; font-size:28px;'>{total_weight:,.2f} g</h2>
-    </div>
-    <div style='background:linear-gradient(135deg, #84fab0 0%, #8fd3f4 100%); padding:20px; border-radius:15px; flex:1; text-align:center;'>
-        <h3 style='color:white;'>🪙 Total Cost</h3>
-        <h2 style='color:white; font-size:28px;'>${total_cost:,.2f}</h2>
-    </div>
-    <div style='background:linear-gradient(135deg, #fccb90 0%, #d57eeb 100%); padding:20px; border-radius:15px; flex:1; text-align:center;'>
-        <h3 style='color:white;'>📈 Total Profit</h3>
-        <h2 style='color:white; font-size:28px;'>${total_profit:,.2f}</h2>
-    </div>
-</div>
-"""
-st.markdown(kpi_html, unsafe_allow_html=True)
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    st.metric("💰 Total Sales", f"${total_sales:,.2f}")
+with col2:
+    st.metric("⚖️ Total Weight", f"{total_weight:,.2f} g")
+with col3:
+    st.metric("🪙 Total Cost", f"${total_cost:,.2f}")
+with col4:
+    st.metric("📈 Total Profit", f"${total_profit:,.2f}")
 
 # ---- MONTHLY SALES & PROFIT ----
 monthly_summary = filtered_df.groupby("month_year").agg(Sales=("Sales","sum"), Profit=("Profit","sum")).reset_index()
@@ -147,7 +138,6 @@ st.plotly_chart(fig_line, use_container_width=True)
 category_df = filtered_df.groupby("Category")["Sales"].sum().reset_index().sort_values("Sales", ascending=False)
 top5_cat = category_df.head(5)
 
-# Donut chart
 fig_pie = px.pie(
     top5_cat,
     names="Category",
@@ -157,11 +147,9 @@ fig_pie = px.pie(
     color_discrete_sequence=px.colors.sequential.Viridis,
     template="plotly_dark"
 )
-fig_pie.update_traces(textinfo="label+percent", pull=[0.05]*len(top5_cat))
-fig_pie.update_layout(height=500)
+fig_pie.update_traces(textinfo="label+percent")
 st.plotly_chart(fig_pie, use_container_width=True)
 
-# Full horizontal bar chart
 fig_bar_cat = px.bar(
     category_df[::-1],
     x="Sales",
@@ -174,7 +162,6 @@ fig_bar_cat = px.bar(
     title="🟢 Sales by Category (All)"
 )
 fig_bar_cat.update_traces(texttemplate='$%{text:.2f}', textposition='outside')
-fig_bar_cat.update_layout(height=600, margin=dict(l=150, r=50, t=50, b=50))
 st.plotly_chart(fig_bar_cat, use_container_width=True)
 
 # ---- TOP 5 STAFF ----
@@ -198,7 +185,6 @@ fig_shop = px.bar(
     title="🏬 Shop-wise Sales & Profit",
     template="plotly_dark"
 )
-fig_shop.update_layout(height=500, xaxis_title="Shop", yaxis_title="Amount", legend_title="Metrics")
 st.plotly_chart(fig_shop, use_container_width=True)
 
 # ---- DOWNLOAD BUTTON ----
@@ -209,5 +195,3 @@ st.download_button(
     file_name="filtered_sales.csv",
     mime="text/csv"
 )
-
-
