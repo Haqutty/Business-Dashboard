@@ -21,7 +21,7 @@ if not os.path.exists(file_path):
     st.stop()
 
 try:
-    df = pd.read_csv(file_path, encoding="ISO-8859-1")
+    df = pd.read_csv("sale.csv")
 except Exception as e:
     st.error(f"❌ Error reading CSV file: {e}")
     st.stop()
@@ -209,3 +209,4 @@ st.download_button(
     file_name="filtered_sales.csv",
     mime="text/csv"
 )
+
