@@ -13,8 +13,6 @@ st.set_page_config(page_title="THANGALS Dashboard", page_icon="💎", layout="wi
 st.title("💎 THANGALS Business Dashboard")
 st.markdown('<style>div.block-container{padding-top:2rem;}</style>', unsafe_allow_html=True)
 
-# ---- AUTO REFRESH EVERY 60 SECONDS ----
-st_autorefresh(interval=60000, key="data_refresh")
 
 # ---- LOAD CSV FUNCTION ----
 @st.cache_data(ttl=60)  # refresh cache every 60 seconds
@@ -195,3 +193,4 @@ st.download_button(
     file_name="filtered_sales.csv",
     mime="text/csv"
 )
+
