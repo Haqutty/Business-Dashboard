@@ -15,6 +15,42 @@ warnings.filterwarnings("ignore")
 # ---- PAGE CONFIG ----
 st.set_page_config(page_title="THANGALS Jewellery Dashboard", page_icon="💎", layout="wide")
 
+# ---- CUSTOM CSS ----
+st.markdown("""
+<style>
+/* Adjust container width and alignment */
+.block-container {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+    padding-left: 2rem;
+    padding-right: 2rem;
+}
+
+/* Style KPI cards */
+.kpi-card {
+    background-color: #f5f5f5;
+    padding: 1rem;
+    border-radius: 10px;
+    text-align: center;
+    box-shadow: 1px 1px 5px rgba(0,0,0,0.1);
+    margin-bottom: 1rem;
+    font-size: 18px;
+}
+.kpi-title {
+    font-weight: bold;
+    font-size: 16px;
+}
+.kpi-value {
+    font-size: 28px;
+    font-weight: bold;
+}
+.kpi-sub {
+    font-size: 14px;
+    color: #555;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ---- USER AUTHENTICATION ----
 USERS = {
     "basheer": {"password": "basheer123", "shops": ["Shamal"]},
