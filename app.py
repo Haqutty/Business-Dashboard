@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import warnings
 import os
+import calendar
 from datetime import datetime, timedelta, time
 from streamlit_autorefresh import st_autorefresh
 from sklearn.linear_model import LinearRegression
@@ -24,11 +25,42 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ---- CUSTOM CSS ----
+# ---- CUSTOM CSS (including glitter animation for cards) ----
 st.markdown("""
 <style>
 .block-container {padding:1rem 2rem;}
-/* You can add more custom styles here if needed */
+.stat-card { padding:16px; border-radius:14px; box-shadow:0 8px 20px rgba(0,0,0,0.07); background:white; }
+.stat-card h3{margin:0 0 6px 0}
+.stat-card table{width:100%; border-collapse:collapse; margin-top:8px}
+.stat-card table th, .stat-card table td{padding:4px 6px; text-align:left; border-bottom:1px solid rgba(0,0,0,0.04)}
+
+/* glitter animation */
+@keyframes glitter {
+  0%{background-position:0% 50%}
+  50%{background-position:100% 50%}
+  100%{background-position:0% 50%}
+}
+.glitter {
+  background: linear-gradient(90deg, rgba(246,211,101,0.15) 0%, rgba(253,160,133,0.12) 40%, rgba(255,255,255,0.0) 60%);
+  background-size: 200% 200%;
+  animation: glitter 2.2s linear infinite;
+  border-radius:12px;
+}
+
+/* Header alignment tweaks to ensure date/time sit flush to right */
+.header-right {text-align:right;}
+.header-title{margin-bottom:0}
+
+/* Month labels under tiny bars */
+.month-labels{
+  display:grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap:4px;
+  margin-top:6px;
+  font-size:10px;
+  color:#777;
+  text-align:center;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -40,16 +72,15 @@ USERS = {
 }
 
 # --- EMAIL CONFIG (IMPORTANT: Replace with your actual credentials) ---
-SENDER_EMAIL = "nabdulhaq5@gmail.com"
-SENDER_PASSWORD = "Abdulhaq@8117"
+SENDER_EMAIL = os.environ.get("SENDER_EMAIL", "nabdulhaq5@gmail.com")
+SENDER_PASSWORD = os.environ.get("SENDER_PASSWORD", "AbdulhaqAbdulhaq@8117")
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 465
 
-# Pre-defined list of managers' emails for the scheduler
 MANAGER_EMAILS = {
     "General Manager": "gm@example.com",
     "Sales Head": "sales.head@example.com",
-    "Admin": "nabdulhaq5@gmail.com"
+    "Admin": "nabdulhaq6@gmail.com"
 }
 
 # ---------- Helper Functions ----------
@@ -66,7 +97,9 @@ def style_card(label, value, sub=None, accent="#f6d365"):
     </div>
     """
 
-def animate_kpi(container, label, target_value_float, sub=None, fmt="{:,.0f}", duration=0.8, steps=20):
+
+def animate_kpi(container, label, target_value_float, sub=None, fmt="{:,.0f}", duration=0.20, steps=20):
+    """Animate KPI by progressively re-rendering the container. Uses small sleeps so UI updates visually on refresh."""
     start = 0.0
     if steps <= 0: steps = 1
     delay = duration / steps
@@ -75,12 +108,14 @@ def animate_kpi(container, label, target_value_float, sub=None, fmt="{:,.0f}", d
         container.markdown(style_card(label, fmt.format(val), sub=sub), unsafe_allow_html=True)
         time_module.sleep(delay)
 
+
 def pct_change(curr, prev):
     if prev == 0:
         return "—", "➖"
     change = ((curr - prev) / prev) * 100
     arrow = "📈" if change > 0 else "📉" if change < 0 else "➖"
     return f"{arrow} {abs(change):.2f}%", arrow
+
 
 def get_seasonal_context(selected_date):
     month = selected_date.month
@@ -100,8 +135,8 @@ def get_seasonal_context(selected_date):
     }
     return context.get(month, "No specific seasonal factor identified for this month.")
 
+
 def generate_analysis_text(analysis_type, **kwargs):
-    """Generates tailored AI analysis text based on the selected tab."""
     from_date = kwargs.get('from_date')
     to_date = kwargs.get('to_date')
     analysis_text = [f"**Analysis for: {from_date.strftime('%d-%b-%Y')} to {to_date.strftime('%d-%b-%Y')}**\n"]
@@ -133,13 +168,15 @@ def generate_analysis_text(analysis_type, **kwargs):
     elif analysis_type == "Shop":
         shop_df = kwargs.get('data')
         analysis_text.append(f"#### 🏬 Shop Performance Insights:")
-        if not shop_df.empty and len(shop_df) > 0:
+        if not shop_df.empty:
             top_shop = shop_df.iloc[0]
             analysis_text.append(f"- **Top Performer:** '{top_shop['Shop']}' leads with **AED {top_shop['Sales']:,.0f}** in sales and a profit of **AED {top_shop['Profit']:,.0f}**.")
             if len(shop_df) > 1:
                 bottom_shop = shop_df.iloc[-1]
                 analysis_text.append(f"- **Underperformer:** '{bottom_shop['Shop']}' is lagging with **AED {bottom_shop['Sales']:,.0f}** in sales. This could be due to location, inventory mix, or staff performance.")
-            analysis_text.append(f"- **Recommendation:** Analyze what makes '{top_shop['Shop']}' successful—is it their inventory, staff, or location? Apply these learnings to '{bottom_shop['Shop']}'. Consider moving high-performing staff or popular items to the underperforming shop temporarily.")
+                analysis_text.append(f"- **Recommendation:** Analyze what makes '{top_shop['Shop']}' successful—is it their inventory, staff, or location? Apply these learnings to '{bottom_shop['Shop']}'. Consider moving high-performing staff or popular items to the underperforming shop temporarily.")
+            else:
+                analysis_text.append("- **Recommendation:** With only one shop selected, focus on its internal metrics. Analyze its top-performing categories and staff to maximize sales. Compare its current performance against previous periods to identify growth trends.")
         else:
             analysis_text.append("- No shop-level data to analyze with current filters.")
 
@@ -214,6 +251,7 @@ def generate_daily_report_html(df_full, shop_list):
     """
     return html
 
+
 def send_email(recipients, subject, html_content):
     if not SENDER_EMAIL or SENDER_EMAIL == "your_email@example.com":
         st.sidebar.error("Email not configured. Update credentials in the script.")
@@ -235,12 +273,59 @@ def send_email(recipients, subject, html_content):
         st.sidebar.error(f"Failed to send email: {e}")
 
 
+# --- UPDATED: All-Time Statistics view (animated cards + month labels) ---
+def display_all_time_stats(df_all_shops):
+    st.header("📊 All-Time Monthly Sales Statistics by Shop")
+    st.markdown("---")
+    shops = sorted(df_all_shops["Shop"].dropna().unique().tolist())
+    if not shops:
+        st.info("No shops found in data.")
+        return
+
+    # Prepare shop-level monthly aggregates
+    shop_data = {}
+    for shop in shops:
+        shop_df = df_all_shops[df_all_shops['Shop'] == shop]
+        monthly_sales = shop_df.groupby(shop_df['Date'].dt.month)['Sales'].sum()
+        monthly_sales = monthly_sales.reindex(range(1, 13), fill_value=0)
+        shop_data[shop] = monthly_sales
+
+    # Display 3 cards per row
+    cols_per_row = 3
+    shops_list = list(shop_data.items())
+    for i in range(0, len(shops_list), cols_per_row):
+        row = shops_list[i:i+cols_per_row]
+        cols = st.columns(len(row))
+        for j, (shop, monthly_sales) in enumerate(row):
+            with cols[j]:
+                total_sales = monthly_sales.sum()
+                # Month bars small inline using simple divs
+                bars_html = "<div style='display:flex; gap:4px; align-items:flex-end; height:70px; margin-top:8px'>"
+                max_val = max(monthly_sales.max(), 1)
+                for m in range(1,13):
+                    h = int((monthly_sales.get(m,0) / max_val) * 68)
+                    bars_html += f"<div title='{calendar.month_abbr[m]}: AED {monthly_sales.get(m,0):,.0f}' style='flex:1; height:{h}px; background:linear-gradient(180deg, rgba(246,211,101,0.95), rgba(253,160,133,0.95)); border-radius:4px'></div>"
+                bars_html += "</div>"
+
+                # NEW: labels row with month short names
+                labels = "".join([f"<div>{calendar.month_abbr[m]}</div>" for m in range(1,13)])
+                labels_html = f"<div class='month-labels'>{labels}</div>"
+
+                # Card HTML with glitter class for animated shine
+                card_html = f"""
+                <div class='stat-card glitter'>
+                    <h3>💎 {shop}</h3>
+                    <h4 style='margin:4px 0 8px 0'>Total Sales: AED {total_sales:,.0f}</h4>
+                    {bars_html}
+                    {labels_html}
+                    <div style='font-size:0.85rem; margin-top:8px; color:grey'>Monthly breakdown (Jan → Dec)</div>
+                </div>
+                """
+                st.markdown(card_html, unsafe_allow_html=True)
+
+
 # ---------- Minimal data cleaning (NO category mapping) ----------
 def clean_and_fix_categories(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    This function only ensures required columns exist and numeric conversions.
-    It does NOT change or infer Category values — Category is used exactly as present in the Excel.
-    """
     expected_cols = ["Date", "Shop", "Location", "Staff", "Item", "Category", "Weight", "Sales", "Profit"]
     for c in expected_cols:
         if c not in df.columns:
@@ -251,15 +336,41 @@ def clean_and_fix_categories(df: pd.DataFrame) -> pd.DataFrame:
             else:
                 df[c] = ""
 
-    # Convert numeric columns safely
     for numcol in ["Weight", "Sales", "Profit"]:
         df[numcol] = pd.to_numeric(df[numcol], errors="coerce").fillna(0)
 
-    # Trim whitespace from Item and Category but do not remap
     df["Item"] = df["Item"].astype(str).str.strip()
     df["Category"] = df["Category"].astype(str).str.strip()
 
     return df
+
+
+# ---------- Staff weight vs profit analysis ----------
+def analyze_staff_weight_vs_profit(df_staff):
+    """Return a small DataFrame and textual analysis showing staff who sell heavy but low profit and vice versa."""
+    if df_staff.empty:
+        return pd.DataFrame(), "No staff data available for analysis."
+    df = df_staff.copy()
+    # Compute profit per gram and sales per gram
+    df['ProfitPerGram'] = df['Profit'] / df['Weight'].replace(0, np.nan)
+    df['SalesPerGram'] = df['Sales'] / df['Weight'].replace(0, np.nan)
+    df = df.fillna(0)
+
+    # Identify top/bottom patterns
+    heaviest = df.sort_values('Weight', ascending=False).head(5)
+    highest_profit_per_gram = df.sort_values('ProfitPerGram', ascending=False).head(5)
+    low_profit_high_weight = df[(df['Weight'] > df['Weight'].median()) & (df['ProfitPerGram'] < df['ProfitPerGram'].median())].sort_values(['Weight','ProfitPerGram'], ascending=[False,True]).head(5)
+    high_profit_low_weight = df[(df['Weight'] < df['Weight'].median()) & (df['ProfitPerGram'] > df['ProfitPerGram'].median())].sort_values(['ProfitPerGram','Weight'], ascending=[False,True]).head(5)
+
+    text = []
+    text.append(f"- Heaviest sellers (by total grams): {', '.join(heaviest['Staff'].astype(str).tolist())}.")
+    text.append(f"- Highest profit per gram: {', '.join(highest_profit_per_gram['Staff'].astype(str).tolist())}.")
+    if not low_profit_high_weight.empty:
+        text.append(f"- Staff selling high weight but with low profit-per-gram: {', '.join(low_profit_high_weight['Staff'].astype(str).tolist())}. Consider checking discounts, cost structure, or product mix for them.")
+    if not high_profit_low_weight.empty:
+        text.append(f"- Staff selling lower weight but higher profit-per-gram: {', '.join(high_profit_low_weight['Staff'].astype(str).tolist())}. These represent efficient, high-margin selling behavior.")
+
+    return df[['Staff','Weight','Sales','Profit','ProfitPerGram','SalesPerGram']], "\n".join(text)
 
 
 # ---------- AUTHENTICATION & MAIN APP ----------
@@ -278,17 +389,23 @@ def login_page():
             else:
                 st.error("Incorrect username or password.")
 
+
 def main_dashboard():
-    # ---- HEADER ----
-    col_title, col_time = st.columns([3, 1])
+    # ---- HEADER: improved alignment for date/time ----
+    col_title, col_time = st.columns([4, 1])
     with col_title:
-        st.title("💎 THANGALS Jewellery Dashboard")
+        st.markdown("<h1 class='header-title'>💎 THANGALS Jewellery Dashboard</h1>", unsafe_allow_html=True)
     with col_time:
         now = datetime.now()
-        st.markdown(f"<h3 style='text-align:right;color:#fda085;'>{now.strftime('%A, %d %B %Y')}</h3>", unsafe_allow_html=True)
-        st.markdown(f"<h4 style='text-align:right;color:grey;'>{now.strftime('%I:%M:%S %p')}</h4>", unsafe_allow_html=True)
+        # Shows current date & time (updates on each rerun)
+        st.markdown(
+            f"<div class='header-right'><div style='font-weight:600'>{now.strftime('%A, %d %B %Y')}</div>"
+            f"<div style='color:grey'>{now.strftime('%I:%M:%S %p')}</div></div>",
+            unsafe_allow_html=True
+        )
 
-    st_autorefresh(interval=60000, key="data_refresh")
+    # UPDATED: refresh every 60 seconds to keep data current (lighter than 1s)
+    st_autorefresh(interval=60_000, key="minute_refresh")
 
     # ---- LOAD DATA ----
     try:
@@ -301,12 +418,9 @@ def main_dashboard():
         st.error(f"Error loading data: {e}")
         st.stop()
 
-    # Dates
     df_full["Date"] = pd.to_datetime(df_full["Date"], errors="coerce")
     df_full.dropna(subset=["Date"], inplace=True)
     df_full["month_year"] = df_full["Date"].dt.to_period("M").dt.to_timestamp()
-
-    # Minimal cleaning (no mapping)
     df_full = clean_and_fix_categories(df_full)
 
     # ---- SIDEBAR ----
@@ -317,40 +431,42 @@ def main_dashboard():
         st.rerun()
 
     st.sidebar.header("Filter Options")
-    
-    # User permission scope (keep permission logic)
     user_shops_permission = st.session_state.get('user_shops', [])
     df = df_full[df_full['Shop'].isin(user_shops_permission)].copy()
     if df.empty:
         st.warning("⚠️ No data available for your assigned shop(s).")
         st.stop()
 
-    # Date filters
     today = datetime.now().date()
     default_start_date = today if not df[df['Date'].dt.date == today].empty else df["Date"].max().date()
     from_date = st.sidebar.date_input("📅 From", default_start_date, min_value=df["Date"].min().date(), max_value=df["Date"].max().date())
     to_date = st.sidebar.date_input("📅 To", default_start_date, min_value=df["Date"].min().date(), max_value=df["Date"].max().date())
 
-    # --- FIXED "SELECT ALL SHOPS" LOGIC ---
-    # Build shop options from the permission-scoped df (shows only shops the user is allowed to see)
     all_shops_option = sorted(df["Shop"].dropna().unique().tolist())
-    select_all_shops = st.sidebar.checkbox("Select All Shops", value=True)
-    if select_all_shops:
-        default_selection = all_shops_option
-    else:
-        default_selection = user_shops_permission
+    use_all_shops = st.sidebar.checkbox("Select All Shops", value=True)
 
-    selected_shops = st.sidebar.multiselect(
-        "🏬 Shop",
-        options=all_shops_option,
-        default=default_selection
-    )
-    
-    # Other filters (Category uses exactly the values from Excel)
+    if use_all_shops:
+        selected_shops = all_shops_option
+        st.sidebar.multiselect(
+            "🏬 Shop",
+            options=all_shops_option,
+            default=all_shops_option,
+            disabled=True
+        )
+    else:
+        selected_shops = st.sidebar.multiselect(
+            "🏬 Shop",
+            options=all_shops_option,
+            default=[]
+        )
+
     locations = st.sidebar.multiselect("📍 Location", options=sorted(df["Location"].dropna().unique()))
     staffs = st.sidebar.multiselect("👤 Staff", options=sorted(df["Staff"].dropna().unique()))
     categories = st.sidebar.multiselect("🗂 Category", options=sorted(df["Category"].dropna().unique()))
     animate = st.sidebar.toggle("✨ Animate KPI cards", value=True)
+
+    # NEW: All-Time Stats toggle (shows per-shop Jan→Dec cards)
+    show_all_time = st.sidebar.checkbox("📚 Show All-Time Monthly Stats (All Shops)", value=False)
 
     # ---- FILTERING LOGIC ----
     from_date_dt = pd.to_datetime(from_date)
@@ -362,8 +478,13 @@ def main_dashboard():
     if staffs: filtered_df = filtered_df[filtered_df["Staff"].isin(staffs)]
     if categories: filtered_df = filtered_df[filtered_df["Category"].isin(categories)]
 
-    if filtered_df.empty:
+    if filtered_df.empty and not show_all_time:
         st.warning("⚠️ No data available for the selected filters.")
+        st.stop()
+
+    # If user wants all-time view, call the dedicated function using df (permission-limited full data)
+    if show_all_time:
+        display_all_time_stats(df)
         st.stop()
 
     # ---- KPI CALCULATIONS ----
@@ -372,13 +493,12 @@ def main_dashboard():
     total_weight = float(filtered_df["Weight"].sum()) if "Weight" in filtered_df.columns else 0.0
     total_txn = len(filtered_df)
 
-    # Previous period comparison
     period_days = (to_date_dt.date() - from_date_dt.date()).days + 1
     prev_from_date = from_date_dt - timedelta(days=period_days)
     prev_df_base = df[(df["Date"] >= prev_from_date) & (df["Date"] < from_date_dt)]
     if selected_shops: prev_df_base = prev_df_base[prev_df_base["Shop"].isin(selected_shops)]
     if locations: prev_df_base = prev_df_base[prev_df_base["Location"].isin(locations)]
-    
+
     prev_sales = float(prev_df_base["Sales"].sum())
     prev_profit = float(prev_df_base["Profit"].sum())
     prev_weight = float(prev_df_base["Weight"].sum()) if "Weight" in prev_df_base.columns else 0.0
@@ -417,9 +537,10 @@ def main_dashboard():
         "🏬 Shop-wise",
         "🏆 Staff Performance",
         "📈 Time Analysis",
-        "🔮 Sales Forecast"
+        "🔮 Sales Forecast",
+        "📄 Stats Report"  # NEW tab with autoplay music
     ]
-    tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs(tab_list)
+    tab0, tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(tab_list)
 
     with tab0:
         st.subheader("Overall Business Health Metrics")
@@ -468,7 +589,7 @@ def main_dashboard():
 
     with tab3:
         st.subheader("Staff Performance")
-        staff_df = filtered_df.groupby("Staff").agg(Sales=('Sales','sum'), Profit=('Profit','sum'), Transactions=('Date','count')).reset_index().sort_values("Sales", ascending=False)
+        staff_df = filtered_df.groupby("Staff").agg(Sales=('Sales','sum'), Profit=('Profit','sum'), Transactions=('Date','count'), Weight=('Weight','sum')).reset_index().sort_values("Sales", ascending=False)
         fig_staff = px.bar(staff_df.head(10), y="Staff", x="Sales", color="Profit", orientation='h', title="Top 10 Staff by Sales", text='Sales', color_continuous_scale=px.colors.sequential.Viridis)
         fig_staff.update_traces(texttemplate='AED %{text:,.2s}', textposition='outside')
         st.plotly_chart(fig_staff, use_container_width=True)
@@ -477,6 +598,16 @@ def main_dashboard():
         with st.expander("🤖 Show AI Analysis & Recommendations"):
             analysis = generate_analysis_text("Staff", data=staff_df, from_date=from_date, to_date=to_date)
             st.info(analysis)
+
+        # New: Staff weight vs profit analysis
+        st.markdown("### 🔍 Staff Weight vs Profit Analysis")
+        staff_table, staff_text = analyze_staff_weight_vs_profit(staff_df)
+        if not staff_table.empty:
+            st.dataframe(staff_table.sort_values('Sales', ascending=False).reset_index(drop=True))
+            st.markdown("**Insights:**")
+            st.info(staff_text)
+        else:
+            st.info(staff_text)
 
     with tab4:
         st.subheader("Daily Sales & Profit Trend")
@@ -494,7 +625,7 @@ def main_dashboard():
 
     with tab5:
         st.subheader("Next Month Sales Forecast (Linear Trend)")
-        forecast_df = df[df['Date'] <= to_date_dt].groupby("month_year")[["Sales"]].sum().reset_index()
+        forecast_df = df[df['Date'] <= to_date_dt].groupby("month_year")[['Sales']].sum().reset_index()
         predicted_sales, last_month_sales = 0, 0
         if len(forecast_df) > 2:
             X = np.arange(len(forecast_df)).reshape(-1, 1)
@@ -520,24 +651,74 @@ def main_dashboard():
             else:
                 st.warning("Not enough data to generate analysis.")
 
+    # NEW TAB: 📄 Stats Report with autoplay music
+    with tab6:
+        st.subheader("📄 Stats Report")
+        st.caption("This tab auto-plays your business background music on open (loops). If your browser blocks autoplay, click the play button below.")
+
+        # --- Place any summary you want here (optional) ---
+        kcol1, kcol2, kcol3 = st.columns(3)
+        kcol1.metric("Period Sales (AED)", f"{total_sales:,.0f}")
+        kcol2.metric("Profit (AED)", f"{total_profit:,.0f}")
+        kcol3.metric("Transactions", f"{total_txn:,}")
+
+        st.markdown("---")
+
+        # --- AUTOPLAY MUSIC ---
+        # Put your MP3 file in the same folder as this app, e.g., "business_music.mp3"
+        # You can also host it and replace the src with a URL.
+        music_file = "business_music.mp3"  # <--- change to your file name if different
+
+        if os.path.exists(music_file):
+            # Hidden audio with autoplay & loop; shows controls as a fallback for manual play
+            st.markdown(
+                f"""
+                <audio id="bgm" autoplay loop>
+                    <source src="{music_file}" type="audio/mpeg">
+                    Your browser does not support the audio element.
+                </audio>
+                """,
+                unsafe_allow_html=True
+            )
+            # Fallback play button (for browsers that block autoplay)
+            with st.expander("If the music didn't start, click to reveal manual controls"):
+                st.audio(music_file, format="audio/mp3", start_time=0)
+        else:
+            st.info("ℹ️ Place a music file named **business_music.mp3** next to the app to enable autoplay here. (Or update the filename in the code.)")
+
     # ---- AUTOMATION & DOWNLOAD ----
     st.sidebar.title("Automation & Data")
-    
-    # Email Scheduler
     st.sidebar.subheader("📧 Daily Report Automation")
-    selected_managers = st.sidebar.multiselect("Select Managers", options=list(MANAGER_EMAILS.keys()))
-    schedule_time_obj = st.sidebar.time_input("Send report daily at (24h):", value=time(22, 0))
+    default_managers = st.session_state.get('scheduled_managers', [])
+    default_time = st.session_state.get('schedule_time', time(22, 0))
+
+    selected_managers = st.sidebar.multiselect(
+        "Select Managers", 
+        options=list(MANAGER_EMAILS.keys()), 
+        default=default_managers
+    )
+    schedule_time_obj = st.sidebar.time_input(
+        "Send report daily at (24h):", 
+        value=default_time
+    )
 
     if st.sidebar.button("Schedule/Update Daily Report"):
         if selected_managers:
             st.session_state['schedule_time'] = schedule_time_obj
             st.session_state['recipients'] = [MANAGER_EMAILS[name] for name in selected_managers]
-            st.session_state['last_sent_date'] = None
-            st.sidebar.success(f"Report scheduled for {schedule_time_obj} to {len(selected_managers)} manager(s).")
+            st.session_state['scheduled_managers'] = selected_managers
+            if 'last_sent_date' not in st.session_state:
+                st.session_state['last_sent_date'] = None
+            st.sidebar.success(f"Report scheduled for {schedule_time_obj.strftime('%H:%M')} to {len(selected_managers)} manager(s).")
         else:
-            st.sidebar.warning("Please select at least one manager.")
-            
-    # Download button
+            st.session_state.pop('schedule_time', None)
+            st.session_state.pop('recipients', None)
+            st.session_state.pop('scheduled_managers', None)
+            st.sidebar.warning("No managers selected. Schedule has been cleared.")
+
+    if 'schedule_time' in st.session_state and 'recipients' in st.session_state:
+        st.sidebar.info(f"✅ Daily report is active.\nScheduled for: {st.session_state['schedule_time'].strftime('%H:%M')}")
+
     st.sidebar.download_button(
         label="📥 Download Filtered Data",
         data=filtered_df.to_csv(index=False).encode('utf-8'),
